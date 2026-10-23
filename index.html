@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Itinéraire Convoi</title>
+<meta name="description" content="Itinéraire sur le réseau convoi exceptionnel de sa catégorie, exportable vers Google Maps et GPS.">
+<meta name="theme-color" content="#F5C400">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: app shell — control column on the left (stacked on phone), schematic network map filling the rest */
+:root{
+  --bg:#EEF1F0; --surface:#FFFFFF; --ink:#15191C; --muted:#5A646C; --line:#D3D9DC;
+  --signal:#F5C400; --on-signal:#111111; --map:#E3E8E6; --outline:#C3CCCF; --danger:#B3261E; --ok:#1F7A4A;
+  --n0:#5F7287; --n1:#8A55BF; --n2:#D06D20; --n3:#CF3535; --n4:#2A8553; --faint:rgba(60,70,80,.12);
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#111417; --surface:#1A1F23; --ink:#E8ECEE; --muted:#97A1A9; --line:#2D343A;
+  --map:#161B1F; --outline:#2F383F; --danger:#F2867E; --ok:#6BCB95;
+  --n0:#8DA0B5; --n1:#B48AE6; --n2:#F0954D; --n3:#F06A6A; --n4:#4FBF80; --faint:rgba(200,210,220,.10);
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111417; --surface:#1A1F23; --ink:#E8ECEE; --muted:#97A1A9; --line:#2D343A;
+  --map:#161B1F; --outline:#2F383F; --danger:#F2867E; --ok:#6BCB95;
+  --n0:#8DA0B5; --n1:#B48AE6; --n2:#F0954D; --n3:#F06A6A; --n4:#4FBF80; --faint:rgba(200,210,220,.10);
+  color-scheme:dark}
+html,body{height:100%}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+.app{display:grid;grid-template-columns:minmax(320px,400px) 1fr;height:100%}
+.side{overflow-y:auto;background:var(--surface);border-right:1px solid var(--line);min-width:0}
+.side>.panel:first-child{padding-bottom:6px}
+.respane{padding-top:6px!important}
+.panel{padding-block:18px 28px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:20px;display:flex;flex-direction:column;gap:18px;background:var(--surface);min-width:0}
+.mapwrap{position:relative;min-width:0;background:var(--map)}
+#map{position:absolute;inset:0;background:var(--map)}
+#map.picking,#map.picking .leaflet-interactive{cursor:crosshair}
+.leaflet-container{font-family:var(--body)}
+.net-canvas{position:absolute;left:0;top:0;pointer-events:none}
+@media (max-width:760px){
+  .app{display:flex;flex-direction:column;height:auto}
+  .side{display:contents}
+  .panel{border-right:0;padding-right:max(16px,env(safe-area-inset-right,0px));overflow:visible}
+  .mapwrap{height:58vh;min-height:320px;order:2}
+  .respane{order:3;padding-top:18px!important}
+}
+.plate{display:inline-flex;align-items:center;gap:10px;background:var(--signal);color:var(--on-signal);border:3px solid var(--on-signal);outline:2px solid var(--signal);padding:4px 12px 3px;font-family:var(--display);font-weight:700;font-size:26px;letter-spacing:.04em;text-transform:uppercase;line-height:1.05;align-self:flex-start}
+.sub{color:var(--muted);font-size:13.5px;margin-top:-8px;max-width:60ch}
+.label{font-family:var(--display);font-weight:600;text-transform:uppercase;letter-spacing:.08em;font-size:13px;color:var(--muted);margin-bottom:6px;display:block}
+.cats{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.cat{appearance:none;border:1.5px solid var(--line);background:transparent;color:var(--ink);border-radius:6px;padding:8px 2px 7px;font-family:var(--display);font-weight:700;font-size:17px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px}
+.cat i{display:block;width:22px;height:4px;border-radius:2px}
+.cat[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--surface)}
+.cat:focus-visible,.btn:focus-visible,input:focus-visible,.seg button:focus-visible,a:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;color:var(--muted);margin-top:8px}
+.check input{margin-top:3px;accent-color:var(--ink)}
+.field{position:relative}
+.row{display:flex;gap:6px}
+.row input{flex:1;min-width:0}
+input[type=text]{width:100%;font:inherit;font-size:16px;padding:10px 12px;border:1.5px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.pin{flex:none;width:44px;border:1.5px solid var(--line);border-radius:6px;background:transparent;color:var(--ink);cursor:pointer;display:grid;place-items:center}
+.pin[aria-pressed="true"]{background:var(--signal);border-color:var(--signal);color:var(--on-signal)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;border:2px solid var(--ink);margin-right:6px;vertical-align:-1px}
+.dot.a{background:var(--ink)} .dot.b{background:var(--signal)}
+.sugg{position:absolute;left:0;right:100px;top:100%;z-index:5;background:var(--surface);border:1.5px solid var(--line);border-radius:6px;margin-top:4px;list-style:none;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.18);max-height:300px;overflow:auto}
+.sugg li{padding:8px 10px;border-radius:4px;cursor:pointer;display:flex;justify-content:space-between;gap:10px}
+.sugg li span{color:var(--muted);font-family:var(--mono);font-size:12.5px}
+.sugg li[aria-selected="true"],.sugg li:hover{background:var(--bg)}
+.btn{appearance:none;border:0;border-radius:6px;padding:12px 16px;font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center}
+.btn.primary{background:var(--signal);color:var(--on-signal)}
+.btn.dark{background:var(--ink);color:var(--surface)}
+.btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.status{font-size:13.5px;color:var(--muted);min-height:1.4em}
+.status.err{color:var(--danger)}
+.results{display:flex;flex-direction:column;gap:14px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding-block:12px}
+.stat b{display:block;font-family:var(--mono);font-size:20px;font-variant-numeric:tabular-nums;font-weight:500}
+.stat small{font-family:var(--display);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-size:12px;font-weight:600}
+.bars{display:flex;flex-direction:column;gap:5px}
+.bar{display:grid;grid-template-columns:62px 1fr 64px;align-items:center;gap:8px;font-size:13px}
+.bar .t{height:8px;border-radius:4px;background:var(--faint);overflow:hidden}
+.bar .t i{display:block;height:100%}
+.bar .k{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.bar .n{font-family:var(--display);font-weight:700;font-size:15px}
+.warn{border-left:4px solid var(--danger);padding:8px 12px;background:var(--bg);font-size:13.5px;border-radius:0 6px 6px 0}
+.note{font-size:12.5px;color:var(--muted)}
+.exports{display:flex;flex-direction:column;gap:8px}
+.seg{display:flex;border:1.5px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{flex:1;appearance:none;border:0;background:transparent;color:var(--ink);padding:7px 6px;font:inherit;font-size:13px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.legs{display:flex;flex-wrap:wrap;gap:6px}
+.legs a{font-family:var(--mono);font-size:13px;color:var(--ink);border:1.5px solid var(--line);border-radius:6px;padding:6px 9px;text-decoration:none}
+.legs a:hover{border-color:var(--ink)}
+.maphud{position:absolute;z-index:500;left:12px;bottom:24px;display:flex;flex-wrap:wrap;gap:4px 12px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font-size:12px;max-width:calc(100% - 24px)}
+.maphud span{display:inline-flex;align-items:center;gap:5px;font-family:var(--display);font-weight:600;letter-spacing:.04em}
+.maphud i{width:16px;height:3px;border-radius:2px;display:inline-block}
+.zoom{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:4px}
+.zoom button{width:38px;height:38px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:20px;cursor:pointer}
+.loading{position:absolute;z-index:600;inset:0;display:grid;place-items:center;font-family:var(--display);font-size:18px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);pointer-events:none}
+.pickhint{position:absolute;z-index:600;left:50%;top:12px;transform:translateX(-50%);background:var(--signal);color:var(--on-signal);padding:6px 12px;border-radius:6px;font-weight:600;font-size:13.5px}
+details summary{cursor:pointer;font-size:13.5px;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="app">
+ <div class="side">
+  <aside class="panel">
+    <div class="plate">Itinéraire convoi</div>
+    <p class="sub">Calcule un trajet qui reste sur le réseau convoi de ta catégorie, puis l'ouvre dans Google Maps ou l'exporte pour My Maps et les GPS.</p>
+
+    <section>
+      <span class="label" id="cat-l">Catégorie du convoi</span>
+      <div class="cats" role="group" aria-labelledby="cat-l" id="cats"></div>
+      <label class="check"><input type="checkbox" id="sup" checked> Autoriser les réseaux de catégorie supérieure (ex. un 72 t peut passer sur le réseau 94 t et 120 t)</label>
+    </section>
+
+    <section class="field">
+      <label class="label" for="from"><span class="dot a"></span>Départ</label>
+      <div class="row">
+        <input type="text" id="from" autocomplete="off" placeholder="Commune, code postal ou lat, lon">
+        <button class="pin" id="gps" title="Partir de ma position" aria-label="Partir de ma position"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+        <button class="pin" id="pickA" aria-pressed="false" title="Choisir le départ sur la carte" aria-label="Choisir le départ sur la carte"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg></button>
+      </div>
+      <ul class="sugg" id="sugA" role="listbox" hidden></ul>
+    </section>
+
+    <section class="field">
+      <label class="label" for="to"><span class="dot b"></span>Arrivée</label>
+      <div class="row">
+        <input type="text" id="to" autocomplete="off" placeholder="Commune, code postal ou lat, lon">
+        <button class="pin" id="pickB" aria-pressed="false" title="Choisir l'arrivée sur la carte" aria-label="Choisir l'arrivée sur la carte"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg></button>
+      </div>
+      <ul class="sugg" id="sugB" role="listbox" hidden></ul>
+    </section>
+
+    <button class="btn primary" id="go" disabled>Calculer l'itinéraire</button>
+    <div class="status" id="status" role="status">Chargement du réseau…</div>
+
+  </aside>
+
+  <aside class="panel respane" id="respane">
+    <section class="results" id="results" hidden>
+      <div class="stats">
+        <div class="stat"><b id="sTot">–</b><small>Total</small></div>
+        <div class="stat"><b id="sNet">–</b><small>Sur réseau</small></div>
+        <div class="stat"><b id="sOff">–</b><small>Hors réseau</small></div>
+      </div>
+      <div class="bars" id="bars"></div>
+      <div id="warns"></div>
+
+      <div class="exports">
+        <span class="label">Google Maps</span>
+        <div class="seg" role="group" aria-label="Nombre d'étapes">
+          <button id="w9" aria-pressed="true">8 étapes · appli / ordinateur</button>
+          <button id="w3" aria-pressed="false">3 étapes · navigateur mobile</button>
+        </div>
+        <a class="btn dark" id="gmaps" href="#" target="_blank" rel="noopener">Ouvrir dans Google Maps</a>
+        <div id="legsWrap" hidden>
+          <p class="note">Pour coller au tracé sur un long trajet, lance plutôt un tronçon après l'autre (une étape tous les 10 km environ) :</p>
+          <div class="legs" id="legs"></div>
+        </div>
+        <p class="note">Google recalcule son propre chemin entre deux étapes. Vérifie que le trajet affiché suit bien la ligne jaune de la carte.</p>
+
+        <span class="label" style="margin-top:8px">Fichiers</span>
+        <button class="btn ghost" id="dlCsv">CSV pour Google My Maps</button>
+        <button class="btn ghost" id="dlGpx">GPX pour OsmAnd / GPS</button>
+        <button class="btn ghost" id="dlKml">KML pour Google Earth / My Maps</button>
+        <p class="note" id="dlNote">My Maps : Créer une carte → Importer → choisir le CSV, colonne « WKT ». Le tracé exact s'affiche, sans guidage vocal. Le GPX se charge dans OsmAnd, Kurviger ou un GPS poids lourd, qui suivent le tracé à la lettre.</p>
+      </div>
+
+      <details>
+        <summary>Limites de l'outil</summary>
+        <p class="note">Réseaux issus de la carte de Sven (<a href="https://sven85000-wq.github.io/reseau-convoi2/" target="_blank" rel="noopener" style="color:inherit">reseau-convoi2</a>, données 2026). Le calcul ignore les sens uniques, les hauteurs sous ouvrage, les ponts et les travaux. Le trajet ne remplace ni l'arrêté d'autorisation ni la reconnaissance d'itinéraire. Les parties « hors réseau » sont des liaisons à vol d'oiseau entre ta commune et le point d'accès le plus proche.</p>
+      </details>
+    </section>
+  </aside>
+ </div>
+
+  <div class="mapwrap" id="mapwrap">
+    <div id="map" aria-label="Carte du réseau convoi"></div>
+    <div class="loading" id="loading">Chargement du réseau…</div>
+    <div class="pickhint" id="pickhint" hidden>Touche la carte pour placer le point</div>
+    <div class="maphud" id="legend"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+const $ = id => document.getElementById(id);
+const CATS = [
+  {k:0, name:"Cat 1", sub:"1TE / ATE"},
+  {k:1, name:"48 t", sub:"2TE48"},
+  {k:2, name:"72 t", sub:"TE72"},
+  {k:3, name:"94 t", sub:"TE94"},
+  {k:4, name:"120 t+", sub:"TE120"},
+];
+const NET = ["1TE","2TE48","TE72","TE94","TE120"];
+const NETCOL = ["#4F6680", "#8A55BF", "#D06D20", "#CF3535", "#2A8553"]; // network colours on the light OSM basemap
+const GAP_PENALTY = 4;          // joins between network pieces that don't touch in the data
+const OFF_PENALTY = 3;           // off-network metres count triple when choosing access points
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+let cat = 2, allowSup = true;
+let G = null;          // graph
+let communes = null;   // {name, cp, lat, lon, norm}
+let rings = [];
+let A = null, B = null; // {label, lat, lon}
+let route = null;
+let wpMode = 8; // Google Maps app: 10 points max (A–J) including origin and destination
+let pickMode = null;
+
+/* ---------- categories UI ---------- */
+CATS.forEach(c => {
+  const b = document.createElement("button");
+  b.className = "cat"; b.type = "button"; b.id = "cat" + c.k;
+  b.setAttribute("aria-pressed", String(c.k === cat));
+  b.title = c.sub;
+  b.innerHTML = `<span>${c.name}</span><i style="background:var(--n${c.k})"></i>`;
+  b.onclick = () => { cat = c.k; document.querySelectorAll(".cat").forEach(x => x.setAttribute("aria-pressed", String(x === b))); onSettingsChange(); };
+  $("cats").appendChild(b);
+});
+$("sup").onchange = e => { allowSup = e.target.checked; onSettingsChange(); };
+function allowed(lvl){ return allowSup ? lvl >= cat : lvl === cat; }
+function onSettingsChange(){ drawLegend(); draw(); if (route && A && B) compute(); }
+
+function drawLegend(){
+  $("legend").innerHTML = CATS.filter(c => allowed(c.k)).map(c => `<span><i style="background:${NETCOL[c.k]}"></i>${c.sub}</span>`).join("") +
+    `<span><i style="background:#F5C400;height:5px"></i>Trajet</span>`;
+}
+drawLegend();
+
+/* ---------- data loading ---------- */
+async function gunzipMaybe(buf){
+  const u = new Uint8Array(buf, 0, 2);
+  if (u[0] === 0x1f && u[1] === 0x8b) {
+    const s = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return await new Response(s).arrayBuffer();
+  }
+  return buf;
+}
+async function loadGraph(){
+  const r = await fetch("graph.bin");
+  if (!r.ok) throw new Error("graph " + r.status);
+  const buf = await gunzipMaybe(await r.arrayBuffer());
+  const dv = new DataView(buf);
+  const nN = dv.getUint32(4, true), nE = dv.getUint32(8, true), nG = dv.getUint32(12, true);
+  let off = 16;
+  const nxy = new Int32Array(buf.slice(off, off + nN * 8)); off += nN * 8;
+  const ea = new Uint32Array(nE), eb = new Uint32Array(nE), el = new Float32Array(nE), lv = new Uint8Array(nE), gs = new Uint32Array(nE), gc = new Uint32Array(nE);
+  for (let i = 0; i < nE; i++, off += 24) {
+    ea[i] = dv.getUint32(off, true); eb[i] = dv.getUint32(off + 4, true); el[i] = dv.getFloat32(off + 8, true);
+    lv[i] = dv.getUint8(off + 12); gs[i] = dv.getUint32(off + 16, true); gc[i] = dv.getUint32(off + 20, true);
+  }
+  const gxy = new Int32Array(buf.slice(off, off + nG * 8));
+  const gap = new Uint8Array(nE);
+  for (let i = 0; i < nE; i++) { if (lv[i] & 8) gap[i] = 1; lv[i] &= 7; }
+  // adjacency (CSR)
+  const deg = new Uint32Array(nN + 1);
+  for (let i = 0; i < nE; i++) { deg[ea[i]]++; deg[eb[i]]++; }
+  const aoff = new Uint32Array(nN + 1);
+  for (let i = 0; i < nN; i++) aoff[i + 1] = aoff[i] + deg[i];
+  const fill = aoff.slice(0, nN), adj = new Uint32Array(aoff[nN]);
+  for (let i = 0; i < nE; i++) { adj[fill[ea[i]]++] = i; adj[fill[eb[i]]++] = i; }
+  // max level touching each node, edge bounding boxes (projected)
+  const nmax = new Int8Array(nN).fill(-1);
+  for (let i = 0; i < nE; i++) { if (lv[i] > nmax[ea[i]]) nmax[ea[i]] = lv[i]; if (lv[i] > nmax[eb[i]]) nmax[eb[i]] = lv[i]; }
+  const nmask = new Uint8Array(nN);
+  for (let i = 0; i < nE; i++) { if (gap[i]) continue; nmask[ea[i]] |= 1 << lv[i]; nmask[eb[i]] |= 1 << lv[i]; }
+  const bb = new Float64Array(nE * 4);
+  const nm = new Float64Array(nN * 2), gm = new Float64Array(nG * 2);
+  for (let i = 0; i < nN; i++) { nm[i*2] = mx(nxy[i*2]/1e5); nm[i*2+1] = my(nxy[i*2+1]/1e5); }
+  for (let i = 0; i < nG; i++) { gm[i*2] = mx(gxy[i*2]/1e5); gm[i*2+1] = my(gxy[i*2+1]/1e5); }
+  for (let i = 0; i < nE; i++) {
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    const add = (lon, lat) => { const x = mx(lon), y = my(lat); if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; };
+    add(nxy[ea[i]*2]/1e5, nxy[ea[i]*2+1]/1e5); add(nxy[eb[i]*2]/1e5, nxy[eb[i]*2+1]/1e5);
+    for (let k = gs[i], e = gs[i] + gc[i]; k < e; k++) add(gxy[k*2]/1e5, gxy[k*2+1]/1e5);
+    bb[i*4] = x0; bb[i*4+1] = x1; bb[i*4+2] = y0; bb[i*4+3] = y1;
+  }
+  // node grid for nearest search (0.05° cells)
+  const grid = new Map();
+  for (let i = 0; i < nN; i++) {
+    const k = cellKey(nxy[i*2]/1e5, nxy[i*2+1]/1e5);
+    let a = grid.get(k); if (!a) grid.set(k, a = []); a.push(i);
+  }
+  return {nN, nE, nxy, ea, eb, el, lv, gs, gc, gxy, aoff, adj, nmax, nmask, gap, bb, nm, gm, grid};
+}
+const CELL = 0.05;
+const cellKey = (lon, lat) => Math.floor(lon / CELL) * 100000 + Math.floor(lat / CELL);
+
+async function loadCommunes(){
+  const r = await fetch("communes.txt");
+  const t = await r.text();
+  communes = t.split("\n").map(l => { const [name, cp, lat, lon] = l.split("|"); return {name, cp, lat:+lat, lon:+lon, norm: norm(name)}; });
+}
+async function loadRings(){
+  try { const r = await fetch("dep.json"); rings = await r.json(); } catch(e) { rings = []; }
+}
+function norm(s){ return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[-'’]/g, " ").replace(/\bSAINT\b/g, "ST").replace(/\bSAINTE\b/g, "STE").replace(/\s+/g, " ").trim(); }
+
+/* ---------- geometry ---------- */
+const K = Math.cos(46.5 * Math.PI / 180);
+const mx = lon => (lon + 180) / 360;
+const my = lat => { const r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2; };
+function hav(lat1, lon1, lat2, lon2){
+  const R = 6371000, r = Math.PI / 180;
+  const dLa = (lat2 - lat1) * r, dLo = (lon2 - lon1) * r;
+  const a = Math.sin(dLa/2)**2 + Math.cos(lat1*r) * Math.cos(lat2*r) * Math.sin(dLo/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+const nodeLL = i => [G.nxy[i*2+1]/1e5, G.nxy[i*2]/1e5];
+function nodeOk(i){ return allowSup ? (G.nmask[i] >> cat) !== 0 : (G.nmask[i] & (1 << cat)) !== 0; }
+
+function candidates(lat, lon){
+  // allowed nodes near a point, nearest first
+  const out = [];
+  const cx = Math.floor(lon / CELL), cy = Math.floor(lat / CELL);
+  for (let rad = 0; rad <= 12; rad++) {
+    for (let dx = -rad; dx <= rad; dx++) for (let dy = -rad; dy <= rad; dy++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== rad) continue;
+      const a = G.grid.get((cx + dx) * 100000 + (cy + dy)); if (!a) continue;
+      for (const i of a) { if (!nodeOk(i)) continue; const [la, lo] = nodeLL(i); out.push([i, hav(lat, lon, la, lo)]); }
+    }
+    if (out.length >= 40 && rad >= 2) break;
+  }
+  out.sort((a, b) => a[1] - b[1]);
+  if (!out.length) return out;
+  const limit = Math.max(out[0][1] * 1.6 + 2000, 5000);
+  return out.filter(c => c[1] <= limit).slice(0, 80);
+}
+
+/* ---------- routing ---------- */
+function dijkstra(seeds){
+  const n = G.nN, dist = new Float64Array(n).fill(Infinity), pe = new Int32Array(n).fill(-1);
+  const hn = new Uint32Array(G.nE * 2 + seeds.length + 8), hd = new Float64Array(hn.length);
+  let hs = 0;
+  const push = (v, d) => { let i = hs++; while (i > 0) { const p = (i - 1) >> 1; if (hd[p] <= d) break; hn[i] = hn[p]; hd[i] = hd[p]; i = p; } hn[i] = v; hd[i] = d; };
+  const pop = () => { const v = hn[0], d = hd[0]; const lv = hn[--hs], ld = hd[hs]; let i = 0;
+    for (;;) { let c = 2*i+1; if (c >= hs) break; if (c+1 < hs && hd[c+1] < hd[c]) c++; if (hd[c] >= ld) break; hn[i] = hn[c]; hd[i] = hd[c]; i = c; }
+    hn[i] = lv; hd[i] = ld; return [v, d]; };
+  for (const [v, d] of seeds) { if (d < dist[v]) { dist[v] = d; push(v, d); } }
+  while (hs) {
+    const [u, d] = pop(); if (d > dist[u]) continue;
+    for (let k = G.aoff[u]; k < G.aoff[u+1]; k++) {
+      const e = G.adj[k]; if (!allowed(G.lv[e])) continue;
+      const v = G.ea[e] === u ? G.eb[e] : G.ea[e];
+      const nd = d + G.el[e] * (G.gap[e] ? GAP_PENALTY : 1);
+      if (nd < dist[v]) { dist[v] = nd; pe[v] = e; push(v, nd); }
+    }
+  }
+  return {dist, pe};
+}
+
+function compute(){
+  if (!G || !A || !B) return;
+  const st = $("status"); st.classList.remove("err");
+  const ca = candidates(A.lat, A.lon), cb = candidates(B.lat, B.lon);
+  if (!ca.length || !cb.length) { st.textContent = "Aucune route de ce réseau à moins de 60 km du " + (!ca.length ? "départ." : "point d'arrivée."); st.classList.add("err"); route = null; $("results").hidden = true; draw(); return; }
+  const t0 = performance.now();
+  const {dist, pe} = dijkstra(ca.map(([i, d]) => [i, d * OFF_PENALTY]));
+  let best = -1, bestCost = Infinity, partial = false;
+  for (const [i, d] of cb) { const c = dist[i] + d * OFF_PENALTY; if (c < bestCost) { bestCost = c; best = i; } }
+  if (best < 0) {
+    // destination unreachable on this network: get as close as possible
+    partial = true; let bd = Infinity;
+    for (let i = 0; i < G.nN; i++) if (dist[i] < Infinity) { const [la, lo] = nodeLL(i); const d = hav(B.lat, B.lon, la, lo); if (d < bd) { bd = d; best = i; } }
+  }
+  // rebuild path
+  const edges = []; let v = best;
+  while (pe[v] >= 0) { const e = pe[v]; edges.push([e, v]); v = G.ea[e] === v ? G.eb[e] : G.ea[e]; }
+  edges.reverse();
+  const startNode = v, endNode = best;
+  const pts = [[A.lat, A.lon]];
+  pts.push(nodeLL(startNode));
+  const perLvl = [0,0,0,0,0]; let netLen = 0, gapLen = 0; const gaps = [];
+  for (const [e, to] of edges) {
+    const fwd = G.eb[e] === to;
+    if (G.gap[e]) { gaps.push(pts.length - 1); pts.push(nodeLL(to)); gapLen += G.el[e]; continue; }
+    const g = []; for (let k = G.gs[e]; k < G.gs[e] + G.gc[e]; k++) g.push([G.gxy[k*2+1]/1e5, G.gxy[k*2]/1e5]);
+    if (!fwd) g.reverse();
+    pts.push(...g, nodeLL(to));
+    perLvl[G.lv[e]] += G.el[e]; netLen += G.el[e];
+  }
+  const endLL = nodeLL(endNode);
+  const offA = hav(A.lat, A.lon, ...nodeLL(startNode)), offB = hav(B.lat, B.lon, ...endLL);
+  pts.push([B.lat, B.lon]);
+  // cumulative distances
+  const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i-1] + hav(pts[i-1][0], pts[i-1][1], pts[i][0], pts[i][1]));
+  route = {pts, cum, netLen, gapLen, gaps, offA, offB, perLvl, partial, endLL, ms: performance.now() - t0};
+  showResults(); fitTo(pts); draw();
+  st.textContent = partial ? "" : "Itinéraire calculé.";
+}
+
+/* ---------- results & exports ---------- */
+const km = m => (m / 1000).toLocaleString("fr-FR", {maximumFractionDigits: m < 10000 ? 1 : 0}) + " km";
+function showResults(){
+  const r = route; $("results").hidden = false;
+  const total = r.cum[r.cum.length - 1];
+  $("sTot").textContent = km(total); $("sNet").textContent = km(r.netLen); $("sOff").textContent = km(r.offA + r.offB + r.gapLen);
+  const mx = Math.max(...r.perLvl, 1);
+  $("bars").innerHTML = r.perLvl.map((m, k) => m > 0 ? `<div class="bar"><span class="n" style="color:var(--n${k})">${NET[k]}</span><span class="t"><i style="width:${(m/mx*100).toFixed(1)}%;background:var(--n${k})"></i></span><span class="k">${km(m)}</span></div>` : "").join("");
+  const w = [];
+  if (r.partial) w.push(`Le réseau ${CATS[cat].sub}${allowSup ? " et supérieurs" : ""} ne relie pas ces deux points. Le réseau s'arrête à <b>${km(r.offB)}</b> de l'arrivée (ligne rouge). Ces réseaux sont souvent des tronçons isolés : il faut un itinéraire spécifique pour la fin du trajet.`);
+  if (r.gaps.length) w.push(`${r.gaps.length} raccord${r.gaps.length > 1 ? "s" : ""} hors réseau (${km(r.gapLen)} au total, en rouge sur la carte) entre des tronçons qui ne se touchent pas dans les données. Vérifie ces passages.`);
+  if (r.offA > 3000) w.push(`L'accès au réseau le plus proche est à ${km(r.offA)} du départ.`);
+  if (!r.partial && r.offB > 3000) w.push(`L'arrivée est à ${km(r.offB)} du réseau le plus proche.`);
+  $("warns").innerHTML = w.map(t => `<div class="warn">${t}</div>`).join("");
+  updateLinks();
+}
+const fmt = p => p[0].toFixed(5) + "," + p[1].toFixed(5);
+function pointAt(d){
+  const {pts, cum} = route; let lo = 0, hi = cum.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] < d) lo = m; else hi = m; }
+  const t = cum[hi] === cum[lo] ? 0 : (d - cum[lo]) / (cum[hi] - cum[lo]);
+  return [pts[lo][0] + (pts[hi][0] - pts[lo][0]) * t, pts[lo][1] + (pts[hi][1] - pts[lo][1]) * t];
+}
+function gmaps(d0, d1, n){
+  const o = pointAt(d0), dst = pointAt(d1), w = [];
+  for (let i = 1; i <= n; i++) w.push(pointAt(d0 + (d1 - d0) * i / (n + 1)));
+  const p = new URLSearchParams({api: "1", origin: fmt(o), destination: fmt(dst), travelmode: "driving"});
+  if (w.length) p.set("waypoints", w.map(fmt).join("|"));
+  return "https://www.google.com/maps/dir/?" + p.toString();
+}
+function updateLinks(){
+  if (!route) return;
+  const L = route.cum[route.cum.length - 1];
+  $("gmaps").href = gmaps(0, L, wpMode);
+  const legLen = (wpMode + 1) * 10000;
+  if (L > legLen * 1.3) {
+    const n = Math.ceil(L / legLen); const per = L / n; let h = "";
+    for (let i = 0; i < n; i++) h += `<a href="${gmaps(i * per, (i + 1) * per, wpMode)}" target="_blank" rel="noopener">Tronçon ${i + 1}/${n} · ${km(i*per)}→${km((i+1)*per)}</a>`;
+    $("legs").innerHTML = h; $("legsWrap").hidden = false;
+  } else $("legsWrap").hidden = true;
+}
+$("w9").onclick = () => { wpMode = 8; $("w9").setAttribute("aria-pressed", "true"); $("w3").setAttribute("aria-pressed", "false"); updateLinks(); };
+$("w3").onclick = () => { wpMode = 3; $("w3").setAttribute("aria-pressed", "true"); $("w9").setAttribute("aria-pressed", "false"); updateLinks(); };
+
+function slug(){ return ("convoi-" + CATS[cat].sub + "-" + A.label.split(" (")[0] + "-" + B.label.split(" (")[0]).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/-+$/,"").toLowerCase(); }
+const esc = s => s.replace(/[<>&"]/g, c => ({"<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;"}[c]));
+function buildCsv(){
+  const rows = [["nom", "WKT"]], P = route.pts, CH = 400;
+  for (let i = 0, part = 1; i < P.length - 1; i += CH - 1, part++) {
+    const seg = P.slice(i, i + CH);
+    rows.push([`Trajet ${CATS[cat].sub} partie ${part}`, "LINESTRING (" + seg.map(p => p[1].toFixed(5) + " " + p[0].toFixed(5)).join(", ") + ")"]);
+  }
+  rows.push(["Départ " + A.label, `POINT (${A.lon.toFixed(5)} ${A.lat.toFixed(5)})`]);
+  rows.push(["Arrivée " + B.label, `POINT (${B.lon.toFixed(5)} ${B.lat.toFixed(5)})`]);
+  return rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(",")).join("\r\n");
+}
+function buildGpx(){
+  const name = esc(`Convoi ${CATS[cat].sub} : ${A.label} → ${B.label}`);
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Itineraire Convoi" xmlns="http://www.topografix.com/GPX/1/1">\n` +
+    `<wpt lat="${A.lat}" lon="${A.lon}"><name>${esc("Départ " + A.label)}</name></wpt>\n<wpt lat="${B.lat}" lon="${B.lon}"><name>${esc("Arrivée " + B.label)}</name></wpt>\n` +
+    `<trk><name>${name}</name><trkseg>\n` + route.pts.map(p => `<trkpt lat="${p[0].toFixed(6)}" lon="${p[1].toFixed(6)}"/>`).join("\n") + `\n</trkseg></trk>\n</gpx>\n`;
+}
+function buildKml(){
+  const name = esc(`Convoi ${CATS[cat].sub} : ${A.label} → ${B.label}`);
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${name}</name>` +
+    `<Style id="r"><LineStyle><color>ff00c4f5</color><width>5</width></LineStyle></Style>` +
+    `<Placemark><name>${name}</name><styleUrl>#r</styleUrl><LineString><tessellate>1</tessellate><coordinates>` + route.pts.map(p => p[1].toFixed(6) + "," + p[0].toFixed(6) + ",0").join(" ") + `</coordinates></LineString></Placemark>` +
+    `<Placemark><name>${esc("Départ " + A.label)}</name><Point><coordinates>${A.lon},${A.lat},0</coordinates></Point></Placemark>` +
+    `<Placemark><name>${esc("Arrivée " + B.label)}</name><Point><coordinates>${B.lon},${B.lat},0</coordinates></Point></Placemark></Document></kml>\n`;
+}
+function save(filename, text, mime){
+  if (!route) return;
+  const url = URL.createObjectURL(new Blob([text], {type: mime}));
+  const el = document.createElement("a"); el.href = url; el.download = filename;
+  document.body.appendChild(el); el.click(); el.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+$("dlCsv").onclick = () => save(slug() + ".csv", "\uFEFF" + buildCsv(), "text/csv");
+$("dlGpx").onclick = () => save(slug() + ".gpx", buildGpx(), "application/gpx+xml");
+$("dlKml").onclick = () => save(slug() + ".kml", buildKml(), "application/vnd.google-earth.kml+xml");
+
+/* ---------- place search ---------- */
+function parseCoords(s){
+  const m = s.match(/^\s*(-?\d{1,2}(?:[.,]\d+)?)\s*[,; ]\s*(-?\d{1,3}(?:[.,]\d+)?)\s*$/);
+  if (!m) return null; const lat = +m[1].replace(",", "."), lon = +m[2].replace(",", ".");
+  if (lat < 41 || lat > 52 || lon < -6 || lon > 10) return null; return {lat, lon};
+}
+function search(q){
+  if (!communes) return [];
+  const c = parseCoords(q); if (c) return [{name: "Coordonnées", cp: fmt([c.lat, c.lon]), lat: c.lat, lon: c.lon}];
+  const n = norm(q); if (n.length < 2) return [];
+  if (/^\d{2,5}$/.test(n)) return communes.filter(x => x.cp.startsWith(n)).slice(0, 8);
+  const starts = [], inc = [];
+  for (const x of communes) { if (x.norm.startsWith(n)) starts.push(x); else if (inc.length < 8 && x.norm.includes(n)) inc.push(x); if (starts.length > 60) break; }
+  starts.sort((a, b) => a.norm.length - b.norm.length);
+  return starts.concat(inc).slice(0, 8);
+}
+function setupField(inp, list, which){
+  let items = [], sel = -1;
+  const render = () => {
+    list.innerHTML = items.map((x, i) => `<li role="option" id="${list.id}-${i}" aria-selected="${i === sel}" data-i="${i}">${esc(x.name)}<span>${esc(x.cp)}</span></li>`).join("");
+    list.hidden = !items.length;
+  };
+  const choose = x => { setPoint(which, {label: x.name === "Coordonnées" ? x.cp : `${x.name} (${x.cp})`, lat: x.lat, lon: x.lon}); items = []; render(); };
+  inp.addEventListener("input", () => { items = search(inp.value); sel = items.length ? 0 : -1; render(); });
+  inp.addEventListener("keydown", e => {
+    if (e.key === "ArrowDown") { sel = Math.min(sel + 1, items.length - 1); render(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { sel = Math.max(sel - 1, 0); render(); e.preventDefault(); }
+    else if (e.key === "Enter" && items[sel]) { choose(items[sel]); e.preventDefault(); }
+    else if (e.key === "Escape") { items = []; render(); }
+  });
+  list.addEventListener("pointerdown", e => { const li = e.target.closest("li"); if (li) { e.preventDefault(); choose(items[+li.dataset.i]); } });
+  inp.addEventListener("blur", () => setTimeout(() => { items = []; render(); }, 150));
+}
+setupField($("from"), $("sugA"), "A");
+setupField($("to"), $("sugB"), "B");
+function setPoint(which, p){
+  if (which === "A") { A = p; $("from").value = p.label; } else { B = p; $("to").value = p.label; }
+  $("go").disabled = !(G && A && B);
+  route = null; $("results").hidden = true; draw();
+}
+$("go").onclick = () => { $("status").textContent = "Calcul…"; setTimeout(compute, 20); };
+function setPick(m){
+  pickMode = pickMode === m ? null : m;
+  $("pickA").setAttribute("aria-pressed", String(pickMode === "A")); $("pickB").setAttribute("aria-pressed", String(pickMode === "B"));
+  $("pickhint").hidden = !pickMode; $("map").classList.toggle("picking", !!pickMode);
+  if (pickMode && window.matchMedia("(max-width:760px)").matches) $("mapwrap").scrollIntoView({behavior: "smooth", block: "center"});
+}
+$("pickA").onclick = () => setPick("A"); $("pickB").onclick = () => setPick("B");
+$("gps").onclick = () => {
+  if (!navigator.geolocation) { $("status").textContent = "La localisation n'est pas disponible sur cet appareil."; return; }
+  $("status").textContent = "Localisation…"; $("status").classList.remove("err");
+  navigator.geolocation.getCurrentPosition(p => {
+    setPoint("A", {label: "Ma position", lat: p.coords.latitude, lon: p.coords.longitude});
+    $("status").textContent = "Départ placé sur ta position."; map.setView([p.coords.latitude, p.coords.longitude], 11);
+  }, err => { $("status").textContent = err.code === 1 ? "Localisation refusée. Autorise-la dans les réglages du navigateur." : "Position introuvable pour l'instant."; $("status").classList.add("err"); },
+  {enableHighAccuracy: true, timeout: 15000});
+};
+
+/* ---------- map ---------- */
+const map = L.map("map", {zoomSnap: 0.5, worldCopyJump: false}).setView([46.6, 2.4], 6);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom: 18, attribution: "© contributeurs OpenStreetMap"}).addTo(map);
+map.createPane("net"); map.getPane("net").style.zIndex = 350; map.getPane("net").style.pointerEvents = "none";
+const netCanvas = L.DomUtil.create("canvas", "net-canvas", map.getPane("net"));
+const ctx = netCanvas.getContext("2d");
+const routeLayer = L.layerGroup().addTo(map);
+let raf = 0;
+function draw(){ if (!raf) raf = requestAnimationFrame(() => { raf = 0; renderNet(); renderRoute(); }); }
+function renderNet(){
+  const size = map.getSize(), dpr = window.devicePixelRatio || 1, W = size.x, H = size.y;
+  const tl = map.containerPointToLayerPoint([0, 0]);
+  L.DomUtil.setPosition(netCanvas, tl);
+  netCanvas.width = Math.round(W * dpr); netCanvas.height = Math.round(H * dpr);
+  netCanvas.style.width = W + "px"; netCanvas.style.height = H + "px"; netCanvas.style.visibility = "";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  if (!G) return;
+  const z = map.getZoom(), scale = 256 * Math.pow(2, z), po = map.getPixelOrigin();
+  const ox = po.x + tl.x, oy = po.y + tl.y;
+  const x0 = ox / scale, x1 = (ox + W) / scale, y0 = oy / scale, y1 = (oy + H) / scale, minPx = 1.2 / scale;
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
+  const path = e => {
+    const b = G.bb;
+    if (b[e*4+1] < x0 || b[e*4] > x1 || b[e*4+3] < y0 || b[e*4+2] > y1) return;
+    const a = G.ea[e], c = G.eb[e], N = G.nm, M = G.gm;
+    ctx.moveTo(N[a*2] * scale - ox, N[a*2+1] * scale - oy);
+    if (b[e*4+1] - b[e*4] > minPx || b[e*4+3] - b[e*4+2] > minPx)
+      for (let k = G.gs[e], end = G.gs[e] + G.gc[e]; k < end; k++) ctx.lineTo(M[k*2] * scale - ox, M[k*2+1] * scale - oy);
+    ctx.lineTo(N[c*2] * scale - ox, N[c*2+1] * scale - oy);
+  };
+  if (z >= 8) {
+    ctx.strokeStyle = "rgba(60,70,80,.28)"; ctx.lineWidth = 1.2; ctx.beginPath();
+    for (let e = 0; e < G.nE; e++) if (!G.gap[e] && !allowed(G.lv[e])) path(e);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 0.85;
+  ctx.lineWidth = z >= 11 ? 3.5 : z >= 8 ? 2.4 : 1.4;
+  for (let lvl = 0; lvl < 5; lvl++) {
+    if (!allowed(lvl)) continue;
+    ctx.strokeStyle = NETCOL[lvl]; ctx.beginPath();
+    for (let e = 0; e < G.nE; e++) if (!G.gap[e] && G.lv[e] === lvl) path(e);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+map.on("zoomstart", () => { netCanvas.style.visibility = "hidden"; });
+map.on("moveend zoomend resize viewreset", draw);
+function renderRoute(){
+  routeLayer.clearLayers();
+  if (route) {
+    const P = route.pts, last = P.length - 1;
+    routeLayer.addLayer(L.polyline(P.slice(1, last), {color: "#15191C", weight: 10, opacity: .9, interactive: false}));
+    routeLayer.addLayer(L.polyline(P.slice(1, last), {color: "#F5C400", weight: 6, interactive: false}));
+    routeLayer.addLayer(L.polyline(P.slice(0, 2), {color: "#15191C", weight: 3, dashArray: "6 6", interactive: false}));
+    routeLayer.addLayer(L.polyline(P.slice(last - 1), {color: route.partial ? "#B3261E" : "#15191C", weight: 3, dashArray: "6 6", interactive: false}));
+    for (const i of route.gaps) routeLayer.addLayer(L.polyline(P.slice(i, i + 2), {color: "#B3261E", weight: 7, dashArray: "8 5", interactive: false}));
+  }
+  if (A) routeLayer.addLayer(L.circleMarker([A.lat, A.lon], {radius: 8, color: "#15191C", weight: 3, fillColor: "#15191C", fillOpacity: 1}).bindTooltip("Départ"));
+  if (B) routeLayer.addLayer(L.circleMarker([B.lat, B.lon], {radius: 8, color: "#15191C", weight: 3, fillColor: "#F5C400", fillOpacity: 1}).bindTooltip("Arrivée"));
+}
+function fitTo(pts){ map.fitBounds(L.latLngBounds(pts), {padding: [30, 30]}); }
+map.on("click", e => {
+  if (!pickMode) return;
+  const {lat, lng} = e.latlng;
+  setPoint(pickMode, {label: lat.toFixed(5) + ", " + lng.toFixed(5), lat, lon: lng}); setPick(pickMode);
+});
+new ResizeObserver(() => { map.invalidateSize(); draw(); }).observe($("mapwrap"));
+
+/* ---------- boot ---------- */
+(async () => {
+  try {
+    const [g] = await Promise.all([loadGraph(), loadCommunes()]);
+    G = g; $("loading").hidden = true; draw();
+    // example trip so the page opens on a working route
+    const find = (n, cp) => communes.find(c => c.norm === n && c.cp.startsWith(cp));
+    const a = find("ST NAZAIRE", "44"), b = find("LE MANS", "72");
+    if (a && b && !A && !B) { setPoint("A", {label: `${a.name} (${a.cp})`, lat: a.lat, lon: a.lon}); setPoint("B", {label: `${b.name} (${b.cp})`, lat: b.lat, lon: b.lon}); compute(); $("status").textContent = "Exemple : Saint-Nazaire → Le Mans en 72 t. Saisis ton propre trajet."; }
+    else $("status").textContent = "Réseau chargé. Saisis un départ et une arrivée.";
+    $("go").disabled = !(A && B);
+  } catch (err) {
+    $("loading").textContent = "Réseau indisponible";
+    $("status").textContent = "Le réseau n'a pas pu être chargé (" + err.message + "). Recharge la page."; $("status").classList.add("err");
+  }
+})();
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+})();
+</script>
+</body>
+</html>
