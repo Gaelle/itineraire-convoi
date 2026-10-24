@@ -1,7 +1,7 @@
 // Keeps the app and its network data available without signal.
 // Bump VERSION whenever graph.bin or communes.txt change.
-const VERSION = "convoi-v1";
-const FILES = ["./", "index.html", "graph.bin", "communes.txt", "manifest.webmanifest", "icon-192.png", "icon-512.png",
+const VERSION = "convoi-v5";
+const FILES = ["./", "index.html", "graph.bin", "communes.txt", "manifest.webmanifest", "manifest-grue.webmanifest", "icon-192.png", "icon-512.png", "icon-grue-192.png", "icon-grue-512.png",
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"];
 
 self.addEventListener("install", e => {

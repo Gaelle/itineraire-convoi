@@ -5,31 +5,38 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Itinéraire Convoi</title>
 <meta name="description" content="Itinéraire sur le réseau convoi exceptionnel de sa catégorie, exportable vers Google Maps et GPS.">
-<meta name="theme-color" content="#F5C400">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#D7262B">
+<script>
+// Opened with ?icone=grue, the app installs with the crane photo as its icon; otherwise the red "TE" icon.
+(function(){
+  var g = /[?&]icone=grue\b/.test(location.search);
+  var h = document.head, add = function(rel, href, type){ var l = document.createElement("link"); l.rel = rel; l.href = href; if (type) l.type = type; h.appendChild(l); };
+  add("manifest", g ? "manifest-grue.webmanifest" : "manifest.webmanifest");
+  add("icon", g ? "icon-grue-192.png" : "icon-192.png", "image/png");
+  add("apple-touch-icon", g ? "icon-grue-192.png" : "icon-192.png");
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Poppins:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
 <style>
-/* Layout: app shell — control column on the left (stacked on phone), schematic network map filling the rest */
+/* Charte rouge / noir / blanc, titres Bebas Neue. Layout: app shell — control column on the left (stacked on phone), schematic network map filling the rest */
 :root{
-  --bg:#EEF1F0; --surface:#FFFFFF; --ink:#15191C; --muted:#5A646C; --line:#D3D9DC;
-  --signal:#F5C400; --on-signal:#111111; --map:#E3E8E6; --outline:#C3CCCF; --danger:#B3261E; --ok:#1F7A4A;
+  --bg:#F3F3F3; --surface:#FFFFFF; --ink:#111111; --muted:#5C5C5C; --line:#DADADA;
+  --signal:#D7262B; --on-signal:#FFFFFF; --route:#F5C400; --map:#E3E8E6; --outline:#C3CCCF; --danger:#B3261E; --ok:#1F7A4A;
   --n0:#5F7287; --n1:#8A55BF; --n2:#D06D20; --n3:#CF3535; --n4:#2A8553; --faint:rgba(60,70,80,.12);
-  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
-  --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --display:"Bebas Neue","Arial Narrow",Impact,sans-serif;
+  --body:"Poppins",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#111417; --surface:#1A1F23; --ink:#E8ECEE; --muted:#97A1A9; --line:#2D343A;
+  --bg:#0E0E0E; --surface:#181818; --ink:#F2F2F2; --muted:#A3A3A3; --line:#2E2E2E; --signal:#E8383D;
   --map:#161B1F; --outline:#2F383F; --danger:#F2867E; --ok:#6BCB95;
   --n0:#8DA0B5; --n1:#B48AE6; --n2:#F0954D; --n3:#F06A6A; --n4:#4FBF80; --faint:rgba(200,210,220,.10);
   color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#111417; --surface:#1A1F23; --ink:#E8ECEE; --muted:#97A1A9; --line:#2D343A;
+  --bg:#0E0E0E; --surface:#181818; --ink:#F2F2F2; --muted:#A3A3A3; --line:#2E2E2E; --signal:#E8383D;
   --map:#161B1F; --outline:#2F383F; --danger:#F2867E; --ok:#6BCB95;
   --n0:#8DA0B5; --n1:#B48AE6; --n2:#F0954D; --n3:#F06A6A; --n4:#4FBF80; --faint:rgba(200,210,220,.10);
   color-scheme:dark}
@@ -54,17 +61,21 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font
   .panel{border-right:0;padding-right:max(16px,env(safe-area-inset-right,0px));overflow:visible}
   .mapwrap{height:58vh;min-height:320px;order:2}
   .respane{order:3;padding-top:18px!important}
+  .brand{margin-right:calc(-1 * max(16px, env(safe-area-inset-right,0px)));padding-right:max(16px, env(safe-area-inset-right,0px))}
 }
-.plate{display:inline-flex;align-items:center;gap:10px;background:var(--signal);color:var(--on-signal);border:3px solid var(--on-signal);outline:2px solid var(--signal);padding:4px 12px 3px;font-family:var(--display);font-weight:700;font-size:26px;letter-spacing:.04em;text-transform:uppercase;line-height:1.05;align-self:flex-start}
-.sub{color:var(--muted);font-size:13.5px;margin-top:-8px;max-width:60ch}
-.label{font-family:var(--display);font-weight:600;text-transform:uppercase;letter-spacing:.08em;font-size:13px;color:var(--muted);margin-bottom:6px;display:block}
+.brand{margin:-18px -20px 0 calc(-1 * max(16px, env(safe-area-inset-left,0px)));padding:14px 20px 10px max(16px, env(safe-area-inset-left,0px));border-bottom:3px solid var(--signal)}
+.brand h1{margin:0;font-family:var(--display);font-weight:400;font-size:40px;line-height:1;letter-spacing:.02em;color:var(--ink)}
+.brand h1 span{color:var(--signal)}
+.plate{display:none;font-family:var(--display);font-weight:400;font-size:26px;letter-spacing:.04em;text-transform:uppercase;line-height:1.05;align-self:flex-start}
+.sub{color:var(--muted);font-size:13.5px;max-width:60ch}
+.label{font-family:var(--display);font-weight:400;text-transform:uppercase;letter-spacing:.06em;font-size:18px;color:var(--muted);margin-bottom:6px;display:block}
 .cats{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
-.cat{appearance:none;border:1.5px solid var(--line);background:transparent;color:var(--ink);border-radius:6px;padding:8px 2px 7px;font-family:var(--display);font-weight:700;font-size:17px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px}
+.cat{appearance:none;border:1.5px solid var(--line);background:transparent;color:var(--ink);border-radius:6px;padding:8px 2px 7px;font-family:var(--display);font-weight:400;font-size:21px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px}
 .cat i{display:block;width:22px;height:4px;border-radius:2px}
-.cat[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--surface)}
+.cat[aria-pressed="true"]{border-color:var(--signal);background:var(--signal);color:var(--on-signal)}
 .cat:focus-visible,.btn:focus-visible,input:focus-visible,.seg button:focus-visible,a:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
 .check{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;color:var(--muted);margin-top:8px}
-.check input{margin-top:3px;accent-color:var(--ink)}
+.check input{margin-top:3px;accent-color:var(--signal)}
 .field{position:relative}
 .row{display:flex;gap:6px}
 .row input{flex:1;min-width:0}
@@ -72,12 +83,12 @@ input[type=text]{width:100%;font:inherit;font-size:16px;padding:10px 12px;border
 .pin{flex:none;width:44px;border:1.5px solid var(--line);border-radius:6px;background:transparent;color:var(--ink);cursor:pointer;display:grid;place-items:center}
 .pin[aria-pressed="true"]{background:var(--signal);border-color:var(--signal);color:var(--on-signal)}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;border:2px solid var(--ink);margin-right:6px;vertical-align:-1px}
-.dot.a{background:var(--ink)} .dot.b{background:var(--signal)}
+.dot.a{background:var(--ink)} .dot.b{background:var(--route)}
 .sugg{position:absolute;left:0;right:100px;top:100%;z-index:5;background:var(--surface);border:1.5px solid var(--line);border-radius:6px;margin-top:4px;list-style:none;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.18);max-height:300px;overflow:auto}
 .sugg li{padding:8px 10px;border-radius:4px;cursor:pointer;display:flex;justify-content:space-between;gap:10px}
 .sugg li span{color:var(--muted);font-family:var(--mono);font-size:12.5px}
 .sugg li[aria-selected="true"],.sugg li:hover{background:var(--bg)}
-.btn{appearance:none;border:0;border-radius:6px;padding:12px 16px;font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center}
+.btn{appearance:none;border:0;border-radius:3px;padding:12px 16px;font-family:var(--display);font-weight:400;font-size:22px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center}
 .btn.primary{background:var(--signal);color:var(--on-signal)}
 .btn.dark{background:var(--ink);color:var(--surface)}
 .btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
@@ -87,29 +98,29 @@ input[type=text]{width:100%;font:inherit;font-size:16px;padding:10px 12px;border
 .results{display:flex;flex-direction:column;gap:14px}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding-block:12px}
 .stat b{display:block;font-family:var(--mono);font-size:20px;font-variant-numeric:tabular-nums;font-weight:500}
-.stat small{font-family:var(--display);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-size:12px;font-weight:600}
+.stat small{font-family:var(--display);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-size:16px;font-weight:400}
 .bars{display:flex;flex-direction:column;gap:5px}
 .bar{display:grid;grid-template-columns:62px 1fr 64px;align-items:center;gap:8px;font-size:13px}
 .bar .t{height:8px;border-radius:4px;background:var(--faint);overflow:hidden}
 .bar .t i{display:block;height:100%}
 .bar .k{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
-.bar .n{font-family:var(--display);font-weight:700;font-size:15px}
+.bar .n{font-family:var(--display);font-weight:400;font-size:19px}
 .warn{border-left:4px solid var(--danger);padding:8px 12px;background:var(--bg);font-size:13.5px;border-radius:0 6px 6px 0}
 .note{font-size:12.5px;color:var(--muted)}
 .exports{display:flex;flex-direction:column;gap:8px}
 .seg{display:flex;border:1.5px solid var(--line);border-radius:6px;overflow:hidden}
 .seg button{flex:1;appearance:none;border:0;background:transparent;color:var(--ink);padding:7px 6px;font:inherit;font-size:13px;cursor:pointer}
-.seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.seg button[aria-pressed="true"]{background:var(--signal);color:var(--on-signal)}
 .legs{display:flex;flex-wrap:wrap;gap:6px}
 .legs a{font-family:var(--mono);font-size:13px;color:var(--ink);border:1.5px solid var(--line);border-radius:6px;padding:6px 9px;text-decoration:none}
 .legs a:hover{border-color:var(--ink)}
 .maphud{position:absolute;z-index:500;left:12px;bottom:24px;display:flex;flex-wrap:wrap;gap:4px 12px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font-size:12px;max-width:calc(100% - 24px)}
-.maphud span{display:inline-flex;align-items:center;gap:5px;font-family:var(--display);font-weight:600;letter-spacing:.04em}
+.maphud span{display:inline-flex;align-items:center;gap:5px;font-family:var(--display);font-weight:400;font-size:15px;letter-spacing:.04em}
 .maphud i{width:16px;height:3px;border-radius:2px;display:inline-block}
 .zoom{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:4px}
 .zoom button{width:38px;height:38px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:20px;cursor:pointer}
-.loading{position:absolute;z-index:600;inset:0;display:grid;place-items:center;font-family:var(--display);font-size:18px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);pointer-events:none}
-.pickhint{position:absolute;z-index:600;left:50%;top:12px;transform:translateX(-50%);background:var(--signal);color:var(--on-signal);padding:6px 12px;border-radius:6px;font-weight:600;font-size:13.5px}
+.loading{position:absolute;z-index:600;inset:0;display:grid;place-items:center;font-family:var(--display);font-size:24px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);pointer-events:none}
+.pickhint{position:absolute;z-index:600;font-family:var(--body);left:50%;top:12px;transform:translateX(-50%);background:var(--signal);color:var(--on-signal);padding:6px 12px;border-radius:6px;font-weight:600;font-size:13.5px}
 details summary{cursor:pointer;font-size:13.5px;color:var(--muted)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -119,7 +130,7 @@ details summary{cursor:pointer;font-size:13.5px;color:var(--muted)}
 <div class="app">
  <div class="side">
   <aside class="panel">
-    <div class="plate">Itinéraire convoi</div>
+    <header class="brand"><h1>Itinéraire <span>convoi</span></h1></header>
     <p class="sub">Calcule un trajet qui reste sur le réseau convoi de ta catégorie, puis l'ouvre dans Google Maps ou l'exporte pour My Maps et les GPS.</p>
 
     <section>
@@ -413,7 +424,7 @@ function showResults(){
   const total = r.cum[r.cum.length - 1];
   $("sTot").textContent = km(total); $("sNet").textContent = km(r.netLen); $("sOff").textContent = km(r.offA + r.offB + r.gapLen);
   const mx = Math.max(...r.perLvl, 1);
-  $("bars").innerHTML = r.perLvl.map((m, k) => m > 0 ? `<div class="bar"><span class="n" style="color:var(--n${k})">${NET[k]}</span><span class="t"><i style="width:${(m/mx*100).toFixed(1)}%;background:var(--n${k})"></i></span><span class="k">${km(m)}</span></div>` : "").join("");
+  $("bars").innerHTML = r.perLvl.map((m, k) => m >= 50 ? `<div class="bar"><span class="n" style="color:var(--n${k})">${NET[k]}</span><span class="t"><i style="width:${(m/mx*100).toFixed(1)}%;background:var(--n${k})"></i></span><span class="k">${km(m)}</span></div>` : "").join("");
   const w = [];
   if (r.partial) w.push(`Le réseau ${CATS[cat].sub}${allowSup ? " et supérieurs" : ""} ne relie pas ces deux points. Le réseau s'arrête à <b>${km(r.offB)}</b> de l'arrivée (ligne rouge). Ces réseaux sont souvent des tronçons isolés : il faut un itinéraire spécifique pour la fin du trajet.`);
   if (r.gaps.length) w.push(`${r.gaps.length} raccord${r.gaps.length > 1 ? "s" : ""} hors réseau (${km(r.gapLen)} au total, en rouge sur la carte) entre des tronçons qui ne se touchent pas dans les données. Vérifie ces passages.`);

@@ -1,0 +1,26 @@
+{
+  "name": "Itinéraire Convoi",
+  "short_name": "Convoi",
+  "description": "Itinéraire sur le réseau convoi exceptionnel de sa catégorie.",
+  "lang": "fr",
+  "start_url": "./?icone=grue",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#D7262B",
+  "icons": [
+    {
+      "src": "icon-grue-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-grue-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "id": "./?icone=grue"
+}
